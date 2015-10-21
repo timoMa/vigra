@@ -396,6 +396,25 @@ namespace vigra{
             runImpl(weights, target, maxDistance);
         }
 
+
+        /// \brief run shortest path with given edge weights from multiple sources.
+        ///
+        /// This is otherwise identical to standard <tt>run()</tt>, except that 
+        /// <tt>source()</tt> returns <tt>lemon::INVALID</tt> after path search finishes.
+        template<class EFGE_WEIGHTS,class NODE_WEIGHTS, class ITER>
+        void 
+        runMultiSource(
+            const EFGE_WEIGHTS & edgeWeights, 
+            const NODE_WEIGHTS & nodeWeights,
+            ITER source_begin, 
+            ITER source_end,
+            const Node & target = lemon::INVALID, 
+            WeightType maxDistance = NumericTraits<WeightType>::max())
+        {
+            this->initializeMapsMultiSource(source_begin, source_end);
+            runImplWithNodeWeights(edgeWeights, nodeWeights, target, maxDistance);
+        }
+
         /// \brief get the graph
         const Graph & graph()const{
             return graph_;
@@ -442,6 +461,18 @@ namespace vigra{
                      const Node & target = lemon::INVALID, 
                      WeightType maxDistance=NumericTraits<WeightType>::max())
         {
+            ZeroNodeMap<Graph, WEIGHT_TYPE> zeroNodeMap;
+            this->runImplWithNodeWeights(weights,zeroNodeMap, target, maxDistance);
+        }
+
+
+        template<class EDGE_WEIGHTS, class NODE_WEIGHTS>
+        void runImplWithNodeWeights(
+            const EDGE_WEIGHTS & edgeWeights,
+            const NODE_WEIGHTS & nodeWeights,
+            const Node & target = lemon::INVALID, 
+            WeightType maxDistance=NumericTraits<WeightType>::max())
+        {
             target_ = lemon::INVALID;
             while(!pq_.empty() ){ //&& !finished){
                 const Node topNode(graph_.nodeFromId(pq_.top()));
@@ -455,11 +486,11 @@ namespace vigra{
                 for(OutArcIt outArcIt(graph_,topNode);outArcIt!=lemon::INVALID;++outArcIt){
                     const Node otherNode = graph_.target(*outArcIt);
                     const size_t otherNodeId = graph_.id(otherNode);
-
+                    const WeightType otherNodeWeight = nodeWeights[otherNode];
                     if(pq_.contains(otherNodeId)){
                         const Edge edge(*outArcIt);
                         const WeightType currentDist     = distMap_[otherNode];
-                        const WeightType alternativeDist = distMap_[topNode]+weights[edge];
+                        const WeightType alternativeDist = distMap_[topNode]+edgeWeights[edge]+otherNodeWeight;
                         if(alternativeDist<currentDist){
                             pq_.push(otherNodeId,alternativeDist);
                             distMap_[otherNode]=alternativeDist;
@@ -468,7 +499,7 @@ namespace vigra{
                     }
                     else if(predMap_[otherNode]==lemon::INVALID){
                         const Edge edge(*outArcIt);
-                        const WeightType initialDist = distMap_[topNode]+weights[edge];
+                        const WeightType initialDist = distMap_[topNode]+edgeWeights[edge]+otherNodeWeight;
                         if(initialDist<=maxDistance)
                         {
                             pq_.push(otherNodeId,initialDist);
@@ -653,6 +684,7 @@ namespace vigra{
         }
     }
     
+
     template<
     class GRAPH, 
     class EDGE_WEIGHTS, 
@@ -661,6 +693,56 @@ namespace vigra{
     class WEIGHT_TYPE
     >
     void shortestPathSegmentation(
+        const GRAPH & graph,
+        const EDGE_WEIGHTS & edgeWeights,
+        const NODE_WEIGHTS & nodeWeights,
+        SEED_NODE_MAP & seeds
+    ){
+
+        typedef GRAPH Graph;
+        typedef typename Graph::Node Node;
+        typedef typename Graph::NodeIt NodeIt;
+        typedef WEIGHT_TYPE WeightType;
+
+        // find seeds
+        std::vector<Node> seededNodes;
+        for(NodeIt n(graph);n!=lemon::INVALID;++n){
+            const Node node(*n);
+            // not a seed
+            if(seeds[node]!=0){
+                seededNodes.push_back(node);
+            }
+        }
+
+        // do shortest path
+        typedef ShortestPathDijkstra<Graph, WeightType> Sp;
+        typedef typename Sp::PredecessorsMap PredecessorsMap;
+        Sp sp(graph);
+        sp.runMultiSource(edgeWeights, nodeWeights, seededNodes.begin(), seededNodes.end());
+        const PredecessorsMap & predMap = sp.predecessors();
+        // do the labeling
+        for(NodeIt n(graph);n!=lemon::INVALID;++n){
+            Node node(*n);
+            if(seeds[node]==0){
+                int label = 0 ;
+                Node pred=predMap[node];
+                while(seeds[pred]==0){
+                    pred=predMap[pred];
+                }
+                seeds[node]=seeds[pred];
+            }
+        }
+    }
+
+
+    template<
+    class GRAPH, 
+    class EDGE_WEIGHTS, 
+    class NODE_WEIGHTS,
+    class SEED_NODE_MAP,
+    class WEIGHT_TYPE
+    >
+    void oldShortestPathSegmentation(
         const GRAPH & graph,
         const EDGE_WEIGHTS & edgeWeights,
         const NODE_WEIGHTS & nodeWeights,
@@ -1128,7 +1210,7 @@ namespace vigra{
     /// \param g               : input graph
     /// \param nodeFeaturesIn  : input node features which should be smoothed       
     /// \param edgeIndicator   : edge indicator to indicate over which edges one should smooth        
-    /// \param lambda          : scale edge indicator by lambda bevore taking negative exponent
+    /// \param lambda          : scale edge indicator by lambda before taking negative exponent
     /// \param edgeThreshold   : edge threshold
     /// \param scale           : how much smoothing should be applied
     /// \param[out] nodeFeaturesOut : smoothed node features
@@ -1151,7 +1233,7 @@ namespace vigra{
     /// \param g               : input graph
     /// \param nodeFeaturesIn  : input node features which should be smoothed       
     /// \param edgeIndicator   : edge indicator to indicate over which edges one should smooth        
-    /// \param lambda          : scale edge indicator by lambda bevore taking negative exponent
+    /// \param lambda          : scale edge indicator by lambda before taking negative exponent
     /// \param edgeThreshold   : edge threshold
     /// \param scale           : how much smoothing should be applied
     /// \param iterations      : how often should this algorithm be called recursively
@@ -1460,6 +1542,138 @@ namespace vigra{
             {
                 edgeWeights[edge] = interpolatedImage[uCoord+vCoord];
             }
+        }
+    }
+
+    template<class GRAPH>
+    struct ThreeCycle{
+
+        typedef typename GRAPH::Node Node;
+
+        ThreeCycle(const Node & a, const Node & b, const Node c){
+            nodes_[0] = a;
+            nodes_[1] = b;
+            nodes_[2] = c;
+            std::sort(nodes_, nodes_+3);
+        }
+        bool operator < (const ThreeCycle & other)const{
+            if(nodes_[0] < other.nodes_[0]){
+                return true;
+            }
+            else if(nodes_[0] == other.nodes_[0]){
+                if(nodes_[1] < other.nodes_[1]){
+                    return true;
+                }
+                else if(nodes_[1] == other.nodes_[1]){
+                    if(nodes_[2] < other.nodes_[2]){
+                        return true;
+                    }
+                    else{
+                        return false;
+                    }
+                }
+                else{
+                    return false;
+                }
+            }
+            else{
+                return false;
+            }
+        }
+
+        Node nodes_[3];
+
+
+    };
+
+
+    template<class GRAPH>
+    void find3Cycles(
+        const GRAPH & g, 
+        MultiArray<1, TinyVector<Int32, 3> > & cyclesArray 
+    ){
+        typedef typename GRAPH::Node Node;
+        typedef typename GRAPH::Edge Edge;
+        typedef typename GRAPH::EdgeIt EdgeIt;
+        typedef typename GRAPH::OutArcIt OutArcIt;
+
+        typedef ThreeCycle<GRAPH> Cycle;
+
+        std::set< Cycle > cycles;
+        typedef typename std::set<Cycle>::const_iterator SetIter;
+        for (EdgeIt iter(g); iter!=lemon::INVALID; ++iter){
+            const Edge edge(*iter);
+            const Node u = g.u(edge);
+            const Node v = g.v(edge);
+
+            // find a node n which is connected to u and v
+            for(OutArcIt outArcIt(g,u); outArcIt!=lemon::INVALID;++outArcIt){
+                const Node w = g.target(*outArcIt);
+                if(w != v){
+                    const Edge e = g.findEdge(w,v);
+                    if(e != lemon::INVALID){
+                        // found cycle
+                        cycles.insert(Cycle(u, v, w));
+                    }
+                }
+            }
+        }
+        cyclesArray.reshape(TinyVector<UInt32,1>(cycles.size()));
+        UInt32 i=0;
+        for(SetIter iter=cycles.begin(); iter!=cycles.end(); ++iter){
+
+            const Cycle & c = *iter;
+            for(size_t j=0;j<3; ++j){
+                cyclesArray(i)[j] = g.id(c.nodes_[j]);
+            }
+            ++i;
+        }
+    }
+
+    template<class GRAPH>
+    void find3CyclesEdges(
+        const GRAPH & g, 
+        MultiArray<1, TinyVector<Int32, 3> > & cyclesArray 
+    ){
+        typedef typename GRAPH::Node Node;
+        typedef typename GRAPH::Edge Edge;
+        typedef typename GRAPH::EdgeIt EdgeIt;
+        typedef typename GRAPH::OutArcIt OutArcIt;
+
+        typedef ThreeCycle<GRAPH> Cycle;
+
+        std::set< Cycle > cycles;
+        typedef typename std::set<Cycle>::const_iterator SetIter;
+        for (EdgeIt iter(g); iter!=lemon::INVALID; ++iter){
+            const Edge edge(*iter);
+            const Node u = g.u(edge);
+            const Node v = g.v(edge);
+
+            // find a node n which is connected to u and v
+            for(OutArcIt outArcIt(g,u); outArcIt!=lemon::INVALID;++outArcIt){
+                const Node w = g.target(*outArcIt);
+                if(w != v){
+                    const Edge e = g.findEdge(w,v);
+                    if(e != lemon::INVALID){
+                        // found cycle
+                        cycles.insert(Cycle(u, v, w));
+                    }
+                }
+            }
+        }
+        cyclesArray.reshape(TinyVector<UInt32,1>(cycles.size()));
+        UInt32 i=0;
+        for(SetIter iter=cycles.begin(); iter!=cycles.end(); ++iter){
+
+            const Cycle & c = *iter;
+            const Node u = c.nodes_[0];
+            const Node v = c.nodes_[1];
+            const Node w = c.nodes_[2];
+
+            cyclesArray(i)[0] = g.id(g.findEdge(u, v));
+            cyclesArray(i)[1] = g.id(g.findEdge(u, w));
+            cyclesArray(i)[2] = g.id(g.findEdge(v, w));
+            ++i;
         }
     }
 
