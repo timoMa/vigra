@@ -223,7 +223,7 @@ def readHDF5(filenameOrGroup, pathInFile, order=None):
             file.close()
     return data
 
-def writeHDF5(data, filenameOrGroup, pathInFile, compression=None):
+def writeHDF5(data, filenameOrGroup, pathInFile, compression=None, chunks=None):
     '''Write an array to an HDF5 file.
 
        'filenameOrGroup' can contain a filename or a group object
@@ -275,7 +275,7 @@ def writeHDF5(data, filenameOrGroup, pathInFile, compression=None):
             data = data.transposeToNumpyOrder()
         except:
             pass
-        dataset = group.create_dataset(levels[-1], data=data, compression=compression)
+        dataset = group.create_dataset(levels[-1], data=data, compression=compression, chunks=chunks)
         if hasattr(data, 'axistags'):
             dataset.attrs['axistags'] = data.axistags.toJSON()
     finally:
