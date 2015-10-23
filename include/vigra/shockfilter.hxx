@@ -11,6 +11,14 @@
 #include "basicimage.hxx"
 #include "convolution.hxx"
 #include "tensorutilities.hxx"
+#include "hdf5impex.hxx"
+
+
+// vigra numpy array converters
+#include <vigra/numpy_array.hxx>
+#include <vigra/numpy_array_converters.hxx>
+
+#include <iostream>
 
 namespace vigra {
     
@@ -231,6 +239,125 @@ doxygen_overloaded_function(template <...> void upwindImage)
 
 template <class SrcIterator,  class SrcAccessor, 
           class DestIterator, class DestAccessor>
+void shockFilterWeighted(SrcIterator s_ul, SrcIterator s_lr, SrcAccessor s_acc,
+                 DestIterator d_ul, DestAccessor d_acc,
+                 float sigma, float rho, float upwind_factor_h, 
+                 unsigned int iterations)
+{
+    
+    typedef typename SrcIterator::difference_type  DiffType;
+    DiffType shape = s_lr - s_ul;
+        
+    unsigned int    w = shape[0],
+                    h = shape[1];
+    
+    FVector3Image tensor(w,h);
+    FVector3Image eigen(w,h);
+    FImage hxx(w,h), hxy(w,h), hyy(w,h), mainSmooth(w,h), secondarySmooth(w,h), result(w,h);
+    
+    float c, s, v_xx, v_xy, v_yy;
+    
+    copyImage(srcIterRange(s_ul, s_lr, s_acc), destImage(result));
+                     
+    for(unsigned int i = 0; i<iterations; ++i)
+    {   
+        
+        structureTensor(srcImageRange(result), destImage(tensor), sigma, rho);
+        tensorEigenRepresentation(srcImageRange(tensor), destImage(eigen));
+        hessianMatrixOfGaussian(srcImageRange(result),
+                                destImage(hxx), destImage(hxy), destImage(hyy), sigma);
+        
+        for(int y=0; y<shape[1]; ++y)
+        {
+            for(int x=0; x<shape[0]; ++x)
+            {
+                c = cos(eigen(x,y)[2]);
+                s = sin(eigen(x,y)[2]);
+                v_xx = hxx(x,y);
+                v_xy = hxy(x,y);
+                v_yy = hyy(x,y);
+                //store signum image in hxx (safe, because no other will ever access hxx(x,y)
+                hxx(x,y) = c*c*v_xx + 2*c*s*v_xy + s*s*v_yy;
+                hyy(x,y) = s*s*v_xx + 2*c*s*v_xy + c*c*v_yy;
+            }
+        }
+        upwindImage(srcImageRange(result),srcImage(hxx), destImage(mainSmooth), upwind_factor_h);
+        upwindImage(srcImageRange(result),srcImage(hyy), destImage(secondarySmooth), upwind_factor_h);
+        for(int y=0; y<shape[1]; ++y) {
+            for(int x=0; x<shape[0]; ++x) {
+                result(x,y) = (mainSmooth(x,y) * eigen(x,y)[0] + secondarySmooth(x,y) * eigen(x,y)[1]) / (eigen(x,y)[0] + eigen(x,y)[1]);
+            }
+        }
+        // result = secondarySmooth;
+        // MultiArray<2, FImage::value_type> hxxData (Shape2(shape), hxx.data());
+        // HDF5File f ("asfd.h5", HDF5File::ReadWrite);
+        // f.write("hxx", hxxData);
+        // f.write("hxx", *hxx.data());
+
+    }
+    copyImage(srcImageRange(result), destIter(d_ul, d_acc));
+}
+
+
+template <class T1, class S1, 
+          class T2, class S2>
+inline void shockFilterWeighted(MultiArrayView<2, T1, S1> const & src,
+                        MultiArrayView<2, T2, S2> dest,
+                        float sigma, float rho, float upwind_factor_h, 
+                        unsigned int iterations)
+{
+    vigra_precondition(src.shape() == dest.shape(),
+                        "vigra::shockFilter(): shape mismatch between input and output.");
+    shockFilterWeighted(srcImageRange(src),
+                destImage(dest), 
+                sigma, rho, upwind_factor_h, 
+                iterations);
+}
+
+
+template <class SrcIterator,  class SrcAccessor,
+          class DestIterator, class DestAccessor>
+inline void shockFilterWeighted(triple<SrcIterator, SrcIterator, SrcAccessor> s,
+                                        pair<DestIterator, DestAccessor> d,
+                                        float sigma, float rho, float upwind_factor_h, 
+                                        unsigned int iterations)
+{
+    shockFilterWeighted(s.first, s.second, s.third, 
+                d.first, d.second, 
+                sigma, rho, upwind_factor_h, 
+                iterations);
+}       
+
+template <class SrcIterator,  class SrcAccessor,
+          class DestIterator, class DestAccessor>
+inline void shockFilter(triple<SrcIterator, SrcIterator, SrcAccessor> s,
+                                        pair<DestIterator, DestAccessor> d,
+                                        float sigma, float rho, float upwind_factor_h, 
+                                        unsigned int iterations)
+{
+    shockFilter(s.first, s.second, s.third, 
+                d.first, d.second, 
+                sigma, rho, upwind_factor_h, 
+                iterations);
+}       
+
+template <class T1, class S1, 
+          class T2, class S2>
+inline void shockFilter(MultiArrayView<2, T1, S1> const & src,
+                        MultiArrayView<2, T2, S2> dest,
+                        float sigma, float rho, float upwind_factor_h, 
+                        unsigned int iterations)
+{
+    vigra_precondition(src.shape() == dest.shape(),
+                        "vigra::shockFilter(): shape mismatch between input and output.");
+    shockFilter(srcImageRange(src),
+                destImage(dest), 
+                sigma, rho, upwind_factor_h, 
+                iterations);
+}
+
+template <class SrcIterator,  class SrcAccessor, 
+          class DestIterator, class DestAccessor>
 void shockFilter(SrcIterator s_ul, SrcIterator s_lr, SrcAccessor s_acc,
                  DestIterator d_ul, DestAccessor d_acc,
                  float sigma, float rho, float upwind_factor_h, 
@@ -279,33 +406,64 @@ void shockFilter(SrcIterator s_ul, SrcIterator s_lr, SrcAccessor s_acc,
     copyImage(srcImageRange(result), destIter(d_ul, d_acc));
 }
 
-template <class SrcIterator,  class SrcAccessor,
-          class DestIterator, class DestAccessor>
-inline void shockFilter(triple<SrcIterator, SrcIterator, SrcAccessor> s,
-                                        pair<DestIterator, DestAccessor> d,
-                                        float sigma, float rho, float upwind_factor_h, 
-                                        unsigned int iterations)
-{
-    shockFilter(s.first, s.second, s.third, 
-                d.first, d.second, 
-                sigma, rho, upwind_factor_h, 
-                iterations);
-}       
+template <class T>
+void shockFilterUpdated(MultiArrayView<2, T>  prob, float sigma, float rho, float upwind, float iterations, MultiArrayView<2, T> out){
 
-template <class T1, class S1, 
-          class T2, class S2>
-inline void shockFilter(MultiArrayView<2, T1, S1> const & src,
-                        MultiArrayView<2, T2, S2> dest,
-                        float sigma, float rho, float upwind_factor_h, 
-                        unsigned int iterations)
-{
-    vigra_precondition(src.shape() == dest.shape(),
-                        "vigra::shockFilter(): shape mismatch between input and output.");
-    shockFilter(srcImageRange(src),
-                destImage(dest), 
-                sigma, rho, upwind_factor_h, 
-                iterations);
+
+    auto shape = prob.shape();
+
+    MultiArray<2, TinyVector<float, 3>> tensor(shape), eigen(shape), hessianOfGaussian(shape);
+
+    MultiArray<2, float> hxx(shape), hxy(shape), hyy(shape), temp(shape), dMajor(shape), dMinor(shape), smoothedMajor(shape), smoothedMinor(shape);
+    
+    float c, s, v_xx, v_xy, v_yy;
+    
+    out = prob;
+    for(unsigned int i = 0; i<iterations; ++i)
+    {   
+        
+        structureTensor(out, tensor, sigma, rho);
+        tensorEigenRepresentation(tensor, eigen);
+        hessianMatrixOfGaussian(out, hessianOfGaussian, 3.0);
+
+        for(int y=0; y<shape[1]; ++y)
+        {
+            for(int x=0; x<shape[0]; ++x)
+            {
+                c = cos(eigen(x,y)[2]);
+                s = sin(eigen(x,y)[2]);
+
+                dMajor(x,y) = c*c*hessianOfGaussian(x,y)[0] + 2*c*s*hessianOfGaussian(x,y)[1] + s*s*hessianOfGaussian(x,y)[2];
+                dMinor(x,y) = s*s*hessianOfGaussian(x,y)[0] + 2*c*s*hessianOfGaussian(x,y)[1] + c*c*hessianOfGaussian(x,y)[2];
+
+            }
+        }
+
+        upwindImage(srcImageRange(out),srcImage(dMajor), destImage(smoothedMajor), upwind);
+        upwindImage(srcImageRange(out),srcImage(dMinor), destImage(smoothedMinor), upwind);
+        for(int y=0; y<shape[1]; ++y) {
+            for(int x=0; x<shape[0]; ++x) {
+                out(x,y) = (smoothedMajor(x,y) * eigen(x,y)[0] + smoothedMinor(x,y) * eigen(x,y)[1]) / (eigen(x,y)[0] + eigen(x,y)[1]);
+            }
+        }
+    }
+
 }
+
+/*
+void export_seg_helper(){
+    boost::python::def("shockFilterUpdated", registerConverters(&shockFilterUpdated<Float32>),
+        (
+            boost::python::arg("prob"),
+            boost::python::arg("sigma"),
+            boost::python::arg("rho"),
+            boost::python::arg("upwind"),
+            boost::python::arg("iterations")
+        )
+    );
+
+}
+*/
 
 } //end of namespace vigra
 
