@@ -79,6 +79,33 @@ pythonGetAnisotropy2D(
 
 template <class InValue, class OutValue>
 NumpyAnyArray
+pythonShockFilterWeighted(NumpyArray<3, Multiband<InValue> > image,
+                  float sigma, 
+                  float rho,
+                  float upwind_factor_h,
+                  unsigned int iterations,
+                  NumpyArray<3, Multiband<OutValue> > res=NumpyArray<3, Multiband<float> >())
+{
+    res.reshapeIfEmpty(image.taggedShape(),
+        "nonlinearDiffusion2D(): Output array has wrong shape.");
+
+    {
+        PyAllowThreads _pythread;
+        for(int k=0; k<image.shape(2); ++k)
+        {
+            MultiArrayView<2, OutValue, StridedArrayTag> bres   = res.bindOuter(k);
+            MultiArrayView<2, InValue,  StridedArrayTag> bimage = image.bindOuter(k);
+
+
+            shockFilterWeighted(bimage,bres, sigma, 
+                rho, upwind_factor_h, iterations);
+        }
+    }
+    return res;
+}
+
+template <class InValue, class OutValue>
+NumpyAnyArray
 pythonShockFilter(NumpyArray<3, Multiband<InValue> > image,
                   float sigma, 
                   float rho,
@@ -202,6 +229,51 @@ void defineFilters2D()
         "Perform edge-preserving smoothing at the given scale."
         "\n\n"
         "For details see nonlinearDiffusion_ in the vigra C++ documentation.\n");
+
+    def("shockFilterUpdated3d",
+        registerConverters(&shockFilterUpdated3d<float>),
+        (
+            arg("prob"), 
+            arg("sigma"), 
+            arg("rho"),
+            arg("updwindFactorH") ,
+            arg("iterations"),
+            arg("out")=python::object()
+        ),
+        "Perform edge-preserving smoothing at the given scale."
+        "Weight both main axis according to gradient strength"
+        "\n\n"
+        "For details see shockFilter_ in the vigra C++ documentation.\n");
+
+    def("shockFilterUpdated",
+        registerConverters(&shockFilterUpdated<float>),
+        (
+            arg("prob"), 
+            arg("sigma"), 
+            arg("rho"),
+            arg("updwindFactorH") ,
+            arg("iterations"),
+            arg("out")=python::object()
+        ),
+        "Perform edge-preserving smoothing at the given scale."
+        "Weight both main axis according to gradient strength"
+        "\n\n"
+        "For details see shockFilter_ in the vigra C++ documentation.\n");
+
+    def("shockFilterWeighted",
+        registerConverters(&pythonShockFilterWeighted<float, float>),
+        (
+            arg("image"), 
+            arg("sigma"), 
+            arg("rho"),
+            arg("updwindFactorH") ,
+            arg("iterations"),
+            arg("out")=python::object()
+        ),
+        "Perform edge-preserving smoothing at the given scale."
+        "Weight both main axis according to gradient strength"
+        "\n\n"
+        "For details see shockFilter_ in the vigra C++ documentation.\n");
 
     def("shockFilter",
         registerConverters(&pythonShockFilter<float, float>),
