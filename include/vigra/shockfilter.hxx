@@ -256,45 +256,28 @@ void shockFilterVolume(MultiArrayView<3, T>  prob, float sigma, float rho, float
     MultiArray<2, float> tmpTensor(TinyVector<unsigned int, 2>(3,3));
 
     out = prob;
-    for (unsigned int l = 0; l<shape[2]; l++){
-    for (unsigned int k = 0; k<shape[1]; k++){
-    for (unsigned int j = 0; j<shape[0]; j++){
-        if (tensor(j,k,l)[5] != tensor(j,k,l)[5]){
-            std::cout << "(" << j << " " << k << " " << l << std::endl;
-            std::cout << tmpTensor << std::endl;
-        }
-    }}}
-
     for(unsigned int i = 0; i<iterations; ++i)
     {   
+        std::cout << i << std::endl;
         structureTensorMultiArray(out, tensor, sigma, rho);
+
         // calculate eigensystem
         for (unsigned int l = 0; l<shape[2]; l++){
         for (unsigned int k = 0; k<shape[1]; k++){
         for (unsigned int j = 0; j<shape[0]; j++){
-            tmpTensor(0,0) = tensor(j,k,l)[0];
-            tmpTensor(0,1) = tensor(j,k,l)[1]; 
-            tmpTensor(1,0) = tensor(j,k,l)[1];
-            tmpTensor(0,2) = tensor(j,k,l)[2]; 
-            tmpTensor(2,0) = tensor(j,k,l)[2];
-            tmpTensor(1,1) = tensor(j,k,l)[3]; 
-            tmpTensor(1,2) = tensor(j,k,l)[4]; 
-            tmpTensor(2,1) = tensor(j,k,l)[4]; 
-            tmpTensor(2,2) = tensor(j,k,l)[5]; 
-
 
             auto eigenValueView = eigenValues.bindInner(j).bindInner(k).bindInner(l);
             auto eigenVectorView = eigenVectors.bindInner(j).bindInner(k).bindInner(l);
  
-            linalg::symmetricEigensystem(
-                    tmpTensor, 
+            linalg::detail::symmetricEigensystem3x3(
+                    tensor(j,k,l)[0], 
+                    tensor(j,k,l)[1], 
+                    tensor(j,k,l)[2], 
+                    tensor(j,k,l)[3], 
+                    tensor(j,k,l)[4], 
+                    tensor(j,k,l)[5], 
                     eigenValueView,
                     eigenVectorView);
-            
-            // todo look for fast implementation of 3x3 mat eigenvectors here:
-            // http://www.geometrictools.com/Documentation/RobustEigenSymmetric3x3.pdf
-            // eigenvalue3x3 vigra
-            // linalg::symmetricEigensystem(tensor(j,k,l), eigenValues(j,k,l), eigenVectors(j,k,l));
         }
         }
         }
@@ -331,8 +314,11 @@ void shockFilterVolume(MultiArrayView<3, T>  prob, float sigma, float rho, float
                     auto dirDerPoint = directionalDerivativeSmooth.bindInner(x).bindInner(y).bindInner(z);
                     auto eigValPoint = eigenValues.bindInner(x).bindInner(y).bindInner(z).bindOuter(0);
 
-                    out(x, y, z) = (dirDerPoint(0) * eigValPoint(0) + dirDerPoint(1) * eigValPoint(1) + dirDerPoint(2) * eigValPoint(2)) / 
-                        (eigValPoint(0) + eigValPoint(1) + eigValPoint(2));
+                    if (eigValPoint(0) + eigValPoint(1) + eigValPoint(2) != 0.)
+                        out(x, y, z) = (dirDerPoint(0) * eigValPoint(0) + dirDerPoint(1) * eigValPoint(1) + dirDerPoint(2) * eigValPoint(2)) / 
+                            (eigValPoint(0) + eigValPoint(1) + eigValPoint(2));
+                    else
+                        out(x, y, z) = (dirDerPoint(0) + dirDerPoint(1) + dirDerPoint(2)) / 3;
                 }
             }
         }
@@ -380,8 +366,12 @@ void shockFilterImage(MultiArrayView<2, T>  prob, float sigma, float rho, float 
         upwindImage(out, dMinor, smoothedMinor, upwind);
         for(int y=0; y<shape[1]; ++y) {
             for(int x=0; x<shape[0]; ++x) {
-                out(x,y) = (smoothedMajor(x,y) * eigen(x,y)[0] + smoothedMinor(x,y) * eigen(x,y)[1]) / (eigen(x,y)[0] + eigen(x,y)[1]);
+                if (eigen(x,y)[0] + eigen(x,y)[1] != 0)
+                    out(x,y) = (smoothedMajor(x,y) * eigen(x,y)[0] + smoothedMinor(x,y) * eigen(x,y)[1]) / (eigen(x,y)[0] + eigen(x,y)[1]);
+                else
+                    out(x,y) = (smoothedMajor(x,y) + smoothedMinor(x,y))/2;
             }
+
         }
     }
 
