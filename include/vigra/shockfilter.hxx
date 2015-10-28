@@ -241,7 +241,7 @@ void upwindImage(MultiArrayView<2, T> srcImage, MultiArrayView<2, T> derivative,
 doxygen_overloaded_function(template <...> void upwindImage)
 
 template <class T>
-void shockFilterVolume(MultiArrayView<3, T>  prob, float sigma, float rho, float upwind, float iterations, MultiArrayView<3, T> out){
+void shockFilterVolume(MultiArrayView<3, T>  prob, float sigma, float rho, float upwind, unsigned int iterations, MultiArrayView<3, T> out){
     vigra_precondition(prob.shape() == out.shape(),
                         "vigra::shockFilterVolume(): shape mismatch between input and output.");
     auto shape = prob.shape();
@@ -256,6 +256,15 @@ void shockFilterVolume(MultiArrayView<3, T>  prob, float sigma, float rho, float
     MultiArray<2, float> tmpTensor(TinyVector<unsigned int, 2>(3,3));
 
     out = prob;
+    for (unsigned int l = 0; l<shape[2]; l++){
+    for (unsigned int k = 0; k<shape[1]; k++){
+    for (unsigned int j = 0; j<shape[0]; j++){
+        if (tensor(j,k,l)[5] != tensor(j,k,l)[5]){
+            std::cout << "(" << j << " " << k << " " << l << std::endl;
+            std::cout << tmpTensor << std::endl;
+        }
+    }}}
+
     for(unsigned int i = 0; i<iterations; ++i)
     {   
         structureTensorMultiArray(out, tensor, sigma, rho);
@@ -272,6 +281,7 @@ void shockFilterVolume(MultiArrayView<3, T>  prob, float sigma, float rho, float
             tmpTensor(1,2) = tensor(j,k,l)[4]; 
             tmpTensor(2,1) = tensor(j,k,l)[4]; 
             tmpTensor(2,2) = tensor(j,k,l)[5]; 
+
 
             auto eigenValueView = eigenValues.bindInner(j).bindInner(k).bindInner(l);
             auto eigenVectorView = eigenVectors.bindInner(j).bindInner(k).bindInner(l);
@@ -328,20 +338,11 @@ void shockFilterVolume(MultiArrayView<3, T>  prob, float sigma, float rho, float
         }
 
     }
-    /*HDF5File f ("asfd.h5", HDF5File::ReadWrite);
-    f.write("hxx", hessianOfGaussian);
-    f.write("dirDerivative", directionalDerivative);
-    f.write("dirDerivativeSmooth", directionalDerivativeSmooth);
-    f.write("eigenValues", eigenValues.bindOuter(0));
-    f.write("out", out);
-    f.close();
-    */
-
 }
 
 
 template <class T>
-void shockFilterImage(MultiArrayView<2, T>  prob, float sigma, float rho, float upwind, float iterations, MultiArrayView<2, T> out){
+void shockFilterImage(MultiArrayView<2, T>  prob, float sigma, float rho, float upwind, unsigned int iterations, MultiArrayView<2, T> out){
     vigra_precondition(prob.shape() == out.shape(),
                         "vigra::shockFilterImage(): shape mismatch between input and output.");
 
