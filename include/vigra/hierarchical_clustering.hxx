@@ -579,11 +579,11 @@ template<
             const BaseGraphNode uu=NodeHelper::itemToGraphItem(mergeGraph_,u);
             const BaseGraphNode vv=NodeHelper::itemToGraphItem(mergeGraph_,v);
 
-            const float sizeU = std::min(nodeSizeMap_[uu] , float(std::pow(50.f,3)));
-            const float sizeV = std::min(nodeSizeMap_[vv] , float(std::pow(50.f,3)));
+            //const float sizeU = std::min(nodeSizeMap_[uu] , float(std::pow(50.f,3)));
+            //const float sizeV = std::min(nodeSizeMap_[vv] , float(std::pow(50.f,3)));
 
-            const ValueType wardFacRaw = 1.0 / ( 1.0/std::sqrt(sizeU) + 1.0/std::sqrt(sizeV) );
-            const ValueType wardFac = (wardFacRaw*wardness_) + (1.0-wardness_);
+
+            const ValueType wardFac = 2.0 / ( 1.0/std::pow(sizeU,wardness_) + 1/std::pow(sizeV,wardness_) );
 
             const ValueType fromEdgeIndicator = edgeIndicatorMap_[ee];
             ValueType fromNodeDist = metric_(nodeFeatureMap_[uu],nodeFeatureMap_[vv]);
