@@ -2190,14 +2190,6 @@ def _genGraphSegmentationFunctions():
             return numpy.array(numpy.where(seedsVolume > threshold)).transpose()
 
 
-        def placePointsInVolumen(points, shape):
-            volumen = numpy.zeros(shape)
-            points = numpy.maximum(points, numpy.array((0, 0, 0)))
-            points = numpy.minimum(points, numpy.array(shape) - 1)
-            for point in (numpy.floor(points)).astype(int):
-                volumen[point[0], point[1], point[2]] = 1
-            return volumen
-
         # get the thresholded pmap
         binary = numpy.zeros_like(pmap, dtype=numpy.uint32)
         binary[pmap >= pmin] = 1
@@ -2219,13 +2211,14 @@ def _genGraphSegmentationFunctions():
         dtSignedSmoothMinima = filters.gaussianSmoothing(dtSigned, sigmaMinima)
         dtSignedSmoothWeights = filters.gaussianSmoothing(dtSigned, sigmaWeights)
 
-        seeds = analysis.localMinima3D(dtSignedSmoothMinima, neighborhood=26, allowAtBorder=True)
+        seedsVolume = analysis.localMinima3D(dtSignedSmoothMinima, neighborhood=26, allowAtBorder=True)
 
         if cleanCloseSeeds:
-            seeds = nonMaximumSuppressionSeeds(volumeToListOfPoints(seeds), dt)
-            seeds = placePointsInVolumen(seeds, mask.shape).astype(numpy.uint32)
+            seeds = nonMaximumSuppressionSeeds(volumeToListOfPoints(seedsVolume), dt)
+            seedsVolume = numpy.zeros_like(pmap, dtype=numpy.uint32)
+            seedsVolume[seeds.T.tolist()] = 1
 
-        seedsLabeled = analysis.labelVolumeWithBackground(seeds)
+        seedsLabeled = analysis.labelVolumeWithBackground(seedsVolume)
         segmentation = analysis.watershedsNew(dtSignedSmoothWeights, seeds = seedsLabeled, neighborhood=26)[0]
 
         analysis.sizeFilterSegInplace(segmentation, int(numpy.max(segmentation)), int(minSegmentSize), checkAtBorder=True)
