@@ -2012,6 +2012,26 @@ def _genGraphSegmentationFunctions():
     graphs.nodeWeightedWatershedsSeeds = nodeWeightedWatershedsSeeds
 
 
+    def geoDt(graph, edgeWeights, nodeWeights, mask, out=None):
+        """ node weighted seeded watersheds
+
+        Keyword Arguments :
+
+            - graph : input graph
+
+            - edgeWeights : edge weight map
+
+            - nodeWeights : node weight map
+
+            - mask : mask where to calculate the distance from
+        """
+
+        return graphs._geoDt(graph=graph, edgeWeights=edgeWeights, nodeWeights=nodeWeights, mask=mask, out=out)
+
+
+    geoDt.__module__ = 'vigra.graphs'
+    graphs.geoDt = geoDt
+
     def shortestPathSegmentation(graph, edgeWeights, nodeWeights, seeds=None, out=None):
         """ node weighted seeded watersheds
 
