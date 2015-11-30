@@ -132,6 +132,16 @@ public:
         );
 
 
+        python::def("_geoDt",registerConverters(&pyGeoDt),
+            (
+                python::arg("graph"),
+                python::arg("edgeWeights"),
+                python::arg("nodeWeights"),
+                python::arg("mask"),
+                python::arg("out")=python::object()
+            ),
+            "Geodesic Distance Transformation"
+        );
         python::def("_shortestPathSegmentation",registerConverters(&pyShortestPathSegmentation),
             (
                 python::arg("graph"),
@@ -564,6 +574,34 @@ public:
 
         // retun labels
         return labelsArray;
+    }
+
+    static NumpyAnyArray pyGeoDt(
+        const Graph &       g,
+        FloatEdgeArray      edgeWeightsArray,
+        FloatNodeArray      nodeWeightsArray,
+        UInt32NodeArray     seedsArray,
+        FloatNodeArray      distancesArray
+    ){
+
+        // resize output ? 
+        distancesArray.reshapeIfEmpty( IntrinsicGraphShape<Graph>::intrinsicNodeMapShape(g) );
+
+        // numpy arrays => lemon maps
+        FloatEdgeArrayMap  edgeWeightsArrayMap(g,edgeWeightsArray);
+        FloatNodeArrayMap  nodeWeightsArrayMap(g,nodeWeightsArray);
+        FloatNodeArrayMap  distancesArrayMap(g,distancesArray);
+        UInt32NodeArrayMap seedsArrayMap(g,seedsArray);
+
+
+        std::copy(seedsArray.begin(),seedsArray.end(),distancesArray.begin());
+
+        geoDt<
+            Graph,FloatEdgeArrayMap, FloatNodeArrayMap, UInt32NodeArrayMap, float
+        >(g, edgeWeightsArrayMap, nodeWeightsArrayMap, seedsArrayMap, distancesArrayMap);
+     
+        
+        return distancesArray;
     }
 
     static NumpyAnyArray pyShortestPathSegmentation(

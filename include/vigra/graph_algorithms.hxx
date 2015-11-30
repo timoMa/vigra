@@ -657,6 +657,98 @@ namespace vigra{
     class GRAPH, 
     class EDGE_WEIGHTS, 
     class NODE_WEIGHTS,
+    class MASK_NODE_MAP,
+    class WEIGHT_TYPE
+    >
+    void geoDt(
+        const GRAPH & graph,
+        const EDGE_WEIGHTS & edgeWeights,
+        const NODE_WEIGHTS & nodeWeights,
+        MASK_NODE_MAP & mask,
+        NODE_WEIGHTS & distMap
+    ){
+
+        typedef GRAPH Graph;
+
+        typedef typename Graph::Node Node;
+        typedef typename Graph::NodeIt NodeIt;
+        typedef typename Graph::Edge Edge;
+        typedef typename Graph::OutArcIt OutArcIt;
+
+        typedef WEIGHT_TYPE WeightType;
+        typedef ChangeablePriorityQueue<WeightType>           PqType;
+        // typedef typename Graph:: template NodeMap<WeightType> DistanceMap;
+
+
+
+        // allocate maps
+        // DistanceMap distMap(graph);
+        PqType pq(graph.maxNodeId()+1);
+
+
+        // using two loops to make sure no nodes adjacent to seeds are overwritten after they are set.
+        for(NodeIt n(graph);n!=lemon::INVALID;++n){
+            const Node node(*n);
+            // not in mask
+            if(mask[node]==0){
+                pq.push(graph.id(node),std::numeric_limits<WeightType>::infinity() );
+                distMap[node]=std::numeric_limits<WeightType>::infinity();
+            }
+        }
+
+
+        for(NodeIt n(graph);n!=lemon::INVALID;++n){
+            const Node node(*n);
+            // in masks
+            if(mask[node]!=0){
+                // mask pixels are not added to pq
+                // but direct neighbors of mask pixels which are not in mask
+                // will be added to the queue with their distance
+                for(OutArcIt oa(graph,node); oa!=lemon::INVALID; ++oa){
+                    Edge e(*oa);
+                    const Node nNode=graph.target(*oa);
+
+                    // check that other node is NOT a in mask
+                    if(mask[nNode]==0){
+                        
+                        // set starting distance
+                        const WeightType startDist = edgeWeights[e]+nodeWeights[nNode];
+                        pq.push(graph.id(nNode),startDist );
+                        distMap[nNode]=startDist;
+                    }
+                }
+            }
+        }
+
+
+        while(!pq.empty() ){ //&& !finished){
+            const Node topNode(graph.nodeFromId(pq.top()));
+            // every node is visited only once, that is an approximation, 
+            // in theory one has to revisit or make sure that g + h is lower than all other possibilities
+            pq.pop();
+            // loop over all neigbours
+            for(OutArcIt outArcIt(graph,topNode);outArcIt!=lemon::INVALID;++outArcIt){
+                const Node otherNode = graph.target(*outArcIt);
+                const size_t otherNodeId = graph.id(otherNode);
+
+                if(pq.contains(otherNodeId)){
+                    const Edge edge(*outArcIt);
+                    const WeightType currentDist     = distMap[otherNode];
+                    const WeightType alternativeDist = distMap[topNode]+edgeWeights[edge]+nodeWeights[otherNode];
+                    if(alternativeDist<currentDist){
+                        pq.push(otherNodeId,alternativeDist);
+                        distMap[otherNode]=alternativeDist;
+                    }
+                }
+            }
+        }
+    }
+
+
+    template<
+    class GRAPH, 
+    class EDGE_WEIGHTS, 
+    class NODE_WEIGHTS,
     class SEED_NODE_MAP,
     class WEIGHT_TYPE
     >
