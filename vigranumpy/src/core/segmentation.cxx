@@ -176,6 +176,7 @@ pythonLabelVolume(NumpyArray<3, Singleband<VoxelType> > volume,
     return res;
 }
 
+
 VIGRA_PYTHON_MULTITYPE_FUNCTOR(pyLabelVolume, pythonLabelVolume)
 
 template < class VoxelType >
@@ -1139,12 +1140,112 @@ python::tuple  pyUnionFindWatershedsBlockwise(
     return python::make_tuple(out, nSeg);
 }
 
+
+NumpyAnyArray py_regionlabels_to_segvolume
+(
+    NumpyArray<3,uint> seg,
+    NumpyArray<1,uint> labels
+)
+{
+
+    int dx = seg.shape()[0];
+    int dy = seg.shape()[1];
+    int dz = seg.shape()[2];
+
+    NumpyArray<3,int> corserseg(seg.shape());
+    for(int x = 0; x < dx; ++x)
+    {
+        for(int y = 0; y < dy; ++y)
+        {
+            for(int z = 0; z < dz; ++z)
+            {
+                int thisid = seg(x, y, z);
+                corserseg(x, y, z) = labels(thisid);
+            }
+        }
+    }
+    return corserseg;
+}
+
+NumpyAnyArray py_accumulate_regfeat_from_vol_argmax
+(
+    const NumpyArray<3, uint> pixvol,
+    const NumpyArray<3, uint> seg
+)
+{
+    assert(pixvol.shape() == seg.shape());
+
+    int big_pixval_count;
+
+    int dimX = seg.shape()[0];
+    int dimY = seg.shape()[1];
+    int dimZ = seg.shape()[2];
+
+    uint seg_minId;
+    uint seg_maxId;
+    seg.minmax(&seg_minId, &seg_maxId);
+    uint pix_minId;
+    uint pix_maxId;
+    pixvol.minmax(&pix_minId, &pix_maxId);
+
+    Shape2 ml2s(seg_maxId + 1, pix_maxId + 1);
+    NumpyArray<2,uint> count(ml2s);
+
+    for(size_t z=0;z<dimZ;++z)
+    {
+        for(size_t y=0;y<dimY;++y)
+        {
+            for(size_t x=0;x<dimX;++x)
+            {
+                uint seg_id = seg(x, y, z);
+                uint pix_id = pixvol(x, y, z);
+                count(seg_id, pix_id) ++;
+            }
+        }
+    }
+
+
+    Shape1 ml1s(seg_maxId + 1);
+    NumpyArray<1,uint> argmax_1(ml1s);
+
+    for(uint sid = seg_minId; sid <= seg_maxId; sid++)
+    {
+        int maxcount = 0;
+        for(uint pid = pix_minId; pid  <= pix_maxId; pid++)
+        {
+            uint thiscount = count(sid, pid);
+            if(count(sid, pid) > maxcount)
+            {
+                argmax_1(sid) = pid;
+                maxcount = thiscount;
+            }
+        }
+    }
+
+    return argmax_1;
+}
+
 void defineSegmentation()
 {
     using namespace python;
     
     docstring_options doc_options(true, true, false);
 
+    python::def("regionLabelsToSegVolume",
+        registerConverters(&py_regionlabels_to_segvolume),
+        (
+            python::arg("seg"),
+            python::arg("labes")
+        )
+    );
+
+    python::def("accumulateRegionFeaturesFromArgmax",
+        registerConverters(&py_accumulate_regfeat_from_vol_argmax),
+        (
+            python::arg("pixelVol"),
+            python::arg("segmentation")
+        )
+    );
 
     python::def("unionFindWatershed3D",
         registerConverters(&pyUnionFindWatershedsBlockwise<3>),
