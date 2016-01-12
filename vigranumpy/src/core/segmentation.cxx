@@ -1167,6 +1167,42 @@ NumpyAnyArray py_regionlabels_to_segvolume
     return corserseg;
 }
 
+NumpyAnyArray py_count_pixel_val_occurence_in_seg
+(
+    const NumpyArray<3, uint> pixvol,
+    const NumpyArray<3, uint> seg
+)
+{
+    assert(pixvol.shape() == seg.shape());
+
+    int dimX = seg.shape()[0];
+    int dimY = seg.shape()[1];
+    int dimZ = seg.shape()[2];
+    
+    uint pix_minId;
+    uint pix_maxId;
+    pixvol.minmax(&pix_minId, &pix_maxId);
+
+    Shape2 ml2s(seg_maxId + 1, pix_maxId + 1);
+    NumpyArray<2,uint> count(ml2s);
+
+    for(size_t z=0;z<dimZ;++z)
+    {
+        for(size_t y=0;y<dimY;++y)
+        {
+            for(size_t x=0;x<dimX;++x)
+            {
+                uint seg_id = seg(x, y, z);
+                uint pix_id = pixvol(x, y, z);
+                count(seg_id, pix_id) ++;
+            }
+        }
+    }
+
+
+    return count;
+}
+
 NumpyAnyArray py_accumulate_regfeat_from_vol_argmax
 (
     const NumpyArray<3, uint> pixvol,
@@ -1175,7 +1211,6 @@ NumpyAnyArray py_accumulate_regfeat_from_vol_argmax
 {
     assert(pixvol.shape() == seg.shape());
 
-    int big_pixval_count;
 
     int dimX = seg.shape()[0];
     int dimY = seg.shape()[1];
@@ -1239,6 +1274,13 @@ void defineSegmentation()
         )
     );
 
+    python::def("countPixelValOccurenceInSeg",
+        registerConverters(&py_count_pixel_val_occurence_in_seg),
+        (
+            python::arg("pixelVol"),
+            python::arg("segmentation")
+        )
+    );
     python::def("accumulateRegionFeaturesFromArgmax",
         registerConverters(&py_accumulate_regfeat_from_vol_argmax),
         (
